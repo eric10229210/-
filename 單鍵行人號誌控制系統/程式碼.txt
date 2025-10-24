@@ -1,0 +1,80 @@
+import RPi.GPIO as GPIO
+import time
+
+# 設定GPIO模式
+GPIO.setmode(GPIO.BOARD)
+
+# 定義LED和按鈕的引腳
+LED_PIN_green = 12
+LED_PIN_yellow = 10
+LED_PIN_red = 8
+BTN_PIN = 11
+buzzer_pin = 7
+
+# 設置LED和蜂鳴器引腳為輸出
+GPIO.setup(LED_PIN_green, GPIO.OUT)
+GPIO.setup(LED_PIN_yellow, GPIO.OUT)
+GPIO.setup(LED_PIN_red, GPIO.OUT)
+GPIO.setup(buzzer_pin, GPIO.OUT)
+
+# 設置按鈕引腳為輸入
+GPIO.setup(BTN_PIN, GPIO.IN)
+
+# 設置等待時間
+WAIT_TIME = 0.5
+
+# 設計蜂鳴器功能
+def buzz(pitch, duration):
+    period = 1.0 / pitch
+    half_period = period / 2
+    cycles = int(duration * pitch)
+    for i in range(cycles):
+        GPIO.output(buzzer_pin, GPIO.HIGH)
+        time.sleep(half_period)
+        GPIO.output(buzzer_pin, GPIO.LOW)
+        time.sleep(half_period)
+
+# 設定綠燈、黃燈、紅燈的初始狀態
+GPIO.output(LED_PIN_green, GPIO.HIGH)
+GPIO.output(LED_PIN_yellow, GPIO.LOW)
+GPIO.output(LED_PIN_red, GPIO.LOW)
+
+button_pressed = False  # 用來標記是否按下按鈕
+
+# 去彈跳時間（以秒為單位）
+DEBOUNCE_TIME = 0.3  # 0.3秒的去彈跳延遲時間
+
+try:
+    while True:
+        button_state = GPIO.input(BTN_PIN)
+        
+        if button_state == GPIO.LOW and not button_pressed:  # 按鈕按下並且尚未處理過
+            print("Button pressed @", time.ctime())
+            button_pressed = True  # 設定為True，防止重複觸發
+
+            # 進行燈號變換和蜂鳴器提示
+            GPIO.output(LED_PIN_green, GPIO.LOW)
+            GPIO.output(LED_PIN_yellow, GPIO.HIGH)
+            buzz(500, 0.5)  # 蜂鳴器發出提示音
+            time.sleep(WAIT_TIME)
+
+            GPIO.output(LED_PIN_yellow, GPIO.LOW)
+            GPIO.output(LED_PIN_red, GPIO.HIGH)
+            buzz(400, 1)  # 蜂鳴器發出提示音，長一點
+            time.sleep(5)
+
+            GPIO.output(LED_PIN_red, GPIO.LOW)
+            GPIO.output(LED_PIN_green, GPIO.HIGH)
+
+            # 增加去彈跳時間（防止按鈕再次觸發）
+            time.sleep(DEBOUNCE_TIME)
+
+        elif button_state == GPIO.HIGH:  # 按鈕松開，重置狀態
+            button_pressed = False
+
+        time.sleep(0.1)  # 稍作延遲避免過度佔用CPU資源
+
+except KeyboardInterrupt:
+    print("Bye")
+finally:        
+    GPIO.cleanup()  # 清理GPIO設定
