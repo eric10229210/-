@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>藥盒你一起</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 20px;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #statusMessage, #timerStatus {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+        #timerStatus {
+            color: green;
+        }
+        #sensorData, #fingerprintData, #reportTable {
+            margin-top: 30px;
+            font-size: 20px;
+            color: blue;
+        }
+        .error {
+            color: red;
+        }
+        table {
+            margin: 20px auto;
+            border-collapse: collapse;
+            width: 80%;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h2>藥盒你一起</h2>
+
+    <!-- 指紋控制按鈕 -->
+    <button onclick="sendFingerprintCommand('0')">註冊指紋</button>
+    <button onclick="sendFingerprintCommand('1')">驗證指紋/開鎖</button>
+    <button onclick="sendFingerprintCommand('2')">刪除指紋</button>
+    <button onclick="sendFingerprintCommand('3')">檢查是否已註冊</button>
+    <button onclick="sendFingerprintCommand('4')">開鎖</button>
+    <button onclick="sendFingerprintCommand('5')">關鎖</button>
+    <button onclick="sendFingerprintCommand('6')">保健</button>
+
+    <div id="statusMessage"></div> <!-- 顯示伺服器回應訊息 -->
+
+    <h3>指紋資料</h3>
+    <div id="fingerprintData">
+        <p>目前指紋 ID：<span id="value-fp_id"></span></p>
+    </div>
+    <h3>指紋註冊進度</h3>
+        <p>狀態:<span id="value-erroll"></span></p> <!-- 顯示最新的註冊狀態 -->
+    </div>
+    <h3>目前時間與感測數據</h3>
+    <div id="sensorData">
+        <p>時間：<span id="value-hr"></span> 時 <span id="value-min"></span> 分 <span id="value-sec"></span> 秒</p>
+        <p>溫度：<span id="value-temp"></span> °C</p>
+        <p>濕度：<span id="value-humm"></span> %</p>
+    </div>
+
+    <h3>定時功能</h3>
+    <div>
+        <label for="setHours">設定小時：</label>
+        <input type="number" id="setHours" min="0" max="23" placeholder="小時">
+        <label for="setMinutes">設定分鐘：</label>
+        <input type="number" id="setMinutes" min="0" max="59" placeholder="分鐘">
+        <button onclick="submitTime()">設定時間</button>
+        <p id="timerStatus"></p>
+    </div>
+
+    <h3>指紋驗證紀錄</h3>
+    <table id="reportTable">
+        <thead>
+            <tr>
+                <th>時間</th>
+                <th>指紋 ID</th>
+                <th>功能</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- 表格數據會動態插入 -->
+        </tbody>
+    </table>
+    <button onclick="generateReport()">生成報告</button>
+
+
+
+    <script>
+    const reportData = [];
+    let lastFpId = '';      // 上次的指紋 ID
+    let lastTime = 0;       // 上次記錄的時間戳 (毫秒)
+
+// 更新數據
+function updateValues() {
+    $.get('/latest_values', function(data) {
+        const fp_id = data.fp_id ? data.fp_id.trim() : ''; // 確保 FP_ID 有效且去除空白
+        const currentTime = new Date(); // 獲取當前時間
+        const currentTimestamp = currentTime.getTime(); // 當前時間戳
+        const timestampStr = currentTime.toLocaleString('zh-TW', { hour12: false });
+
+        // 更新畫面上的數據
+        $('#value-fp_id').text(fp_id || '');
+        $('#value-hr').text(data.hr || '未知');
+        $('#value-min').text(data.min || '未知');
+        $('#value-sec').text(data.sec || '未知');
+        $('#value-temp').text(data.temp || '未知');
+        $('#value-humm').text(data.humm || '未知');
+        $('#value-erroll').text(data.erroll || '無資料');
+
+        // **判斷 FP_ID 有效時，才記錄**
+        if (fp_id !== '' && fp_id !== '0') {
+            if (fp_id !== lastFpId || (currentTimestamp - lastTime) > 30000) {
+                // 新增到表格
+                addFingerprintRecord(timestampStr, fp_id);
+                lastFpId = fp_id; // 更新最後的 FP_ID
+                lastTime = currentTimestamp; // 更新時間戳
+            }
+        } else {
+            lastFpId = ''; // 如果 FP_ID 為空或 '0'，重置狀態
+        }
+    }).fail(function() {
+        $('#statusMessage').text('無法獲取數據').addClass('error');
+    });
+}
+
+// 將記錄加入表格
+function addFingerprintRecord(time, id) {
+    reportData.push({ time: time, id: id });
+    $('#reportTable tbody').append(
+        `<tr><td>${time}</td><td>${id}</td></tr>`
+    );
+}
+
+// 每秒更新數據
+setInterval(updateValues, 1000);
+
+// 將記錄加入表格
+function addFingerprintRecord(time, id) {
+    const rowId = reportData.length; // 獲取當前的行索引
+    reportData.push({ time: time, id: id });
+
+    // 在表格中新增一行，並包含刪除按鈕
+    $('#reportTable tbody').append(
+        `<tr id="row-${rowId}">
+            <td>${time}</td>
+            <td>${id}</td>
+            <td><button onclick="deleteRow(${rowId})">刪除</button></td>
+        </tr>`
+    );
+}
+
+setInterval(updateValues, 1000); // 每秒更新數據
+function deleteRow(rowId) {
+    // 從 reportData 中移除指定的數據
+    reportData.splice(rowId, 1);
+
+    // 移除表格中的對應行
+    $(`#row-${rowId}`).remove();
+
+    // 更新所有行的 ID 和按鈕行為
+    $('#reportTable tbody tr').each((index, row) => {
+        $(row).attr('id', `row-${index}`);
+        $(row).find('button').attr('onclick', `deleteRow(${index})`);
+    });
+}
+        // 發送指紋模組控制指令
+        function sendFingerprintCommand(value) {
+            const statusMessage = $('#statusMessage');
+            statusMessage.text('正在處理請求...').removeClass('error');
+
+            // 獲取當前時間戳
+            const currentTime = new Date();
+            const timestampStr = currentTime.toLocaleString('zh-TW', { hour12: false });
+
+            // 如果按下保健按鈕，記錄到表格並發送到後端
+            if (value === '6') {
+                addFingerprintRecord(timestampStr, 'health care'); // 新增保健記錄到表格
+            }
+
+            // 傳送數據到後端
+            $.ajax({
+                url: '/senddata',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ data: value }),
+                success: function(response) {
+                    statusMessage.text(response.message);
+                },
+                error: function() {
+                    statusMessage.text('請求失敗，請稍後再試。').addClass('error');
+                }
+            });
+        }
+
+        // 發送設定時間到後端
+        function submitTime() {
+            const timerStatus = $('#timerStatus');
+            const hours = parseInt($('#setHours').val());
+            const minutes = parseInt($('#setMinutes').val());
+
+            if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes >= 60) {
+                timerStatus.text('請輸入有效的時間').css('color', 'red');
+                return;
+            }
+
+            $.ajax({
+                url: '/set_time',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ hours: hours, minutes: minutes }),
+                success: function(response) {
+                    timerStatus.text(response.message).css('color', 'green');
+                },
+                error: function() {
+                    timerStatus.text('時間設定失敗').css('color', 'red');
+                }
+            });
+        }
+
+        // 生成報告（下載 CSV）
+ // 每秒更新數據
+setInterval(updateValues, 1000);
+
+// 生成報告（下載 CSV）
+function generateReport() {
+    let csvContent = "time,finger ID\n";
+    reportData.forEach(row => {
+        csvContent += `${row.time},${row.id}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = "指紋驗證報告.csv";
+    link.click();
+}
+        updateValues(); // 初始化更新數據
+    </script>
+</body>
+</html>
